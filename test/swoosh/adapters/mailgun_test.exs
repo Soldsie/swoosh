@@ -81,6 +81,36 @@ defmodule Swoosh.Adapters.MailgunTest do
     assert Mailgun.deliver(email, config) == {:ok, %{id: "<20111114174239.25659.5817@samples.mailgun.org>"}}
   end
 
+  test "delivery/1 with all fields and attachments returns :ok", %{bypass: bypass, config: config} do
+    email =
+      new
+      |> from({"T Stark", "tony@stark.com"})
+      |> to({"Steve Rogers", "steve@rogers.com"})
+      |> to("wasp@avengers.com")
+      |> reply_to("office@avengers.com")
+      |> cc({"Bruce Banner", "hulk@smash.com"})
+      |> cc("thor@odinson.com")
+      |> bcc({"Clinton Francis Barton", "hawk@eye.com"})
+      |> bcc("beast@avengers.com")
+      |> subject("Hello, Avengers!")
+      |> html_body("<h1>Hello</h1>")
+      |> text_body("Hello")
+      |> attachment("lorem.txt", "test/support/fixtures/lorem.txt")
+      |> attachment("lorem.txt", File.read!("test/support/fixtures/lorem.txt"), "text/plain")
+
+    Bypass.expect bypass, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+
+      expected_path = "/" <> config[:domain] <> "/messages"
+      assert expected_path == conn.request_path
+      assert "POST" == conn.method
+
+      Plug.Conn.resp(conn, 200, @success_response)
+    end
+
+    assert Mailgun.deliver(email, config) == {:ok, %{id: "<20111114174239.25659.5817@samples.mailgun.org>"}}
+  end
+
   test "delivery/1 with 4xx response", %{bypass: bypass, config: config, valid_email: email} do
     Bypass.expect bypass, fn conn ->
       Plug.Conn.resp(conn, 401, "Forbidden")

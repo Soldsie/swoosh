@@ -27,10 +27,11 @@ defmodule Swoosh.Adapters.Mailgun do
   @api_endpoint "/messages"
 
   def deliver(%Email{} = email, config \\ []) do
+    url = base_url(config) <> "/" <> config[:domain] <> @api_endpoint
     headers = prepare_headers(email, config)
-    params = email |> prepare_body |> Plug.Conn.Query.encode
+    body = prepare_message(email) |> prepare_body
 
-    case HTTPoison.post(base_url(config) <> "/" <> config[:domain] <> @api_endpoint, params, headers) do
+    case HTTPoison.post(url, body, headers) do
       {:ok, %Response{status_code: code, body: body}} when code >= 200 and code <= 299 ->
         {:ok, %{id: Poison.decode!(body)["id"]}}
       {:ok, %Response{status_code: code, body: body}} when code == 401 ->
@@ -58,7 +59,7 @@ defmodule Swoosh.Adapters.Mailgun do
   defp content_type(%Email{attachments: []}), do: "application/x-www-form-urlencoded"
   defp content_type(%Email{}), do: "multipart/form-data"
 
-  defp prepare_body(email) do
+  defp prepare_message(email) do
     %{}
     |> prepare_from(email)
     |> prepare_to(email)
@@ -68,6 +69,7 @@ defmodule Swoosh.Adapters.Mailgun do
     |> prepare_cc(email)
     |> prepare_bcc(email)
     |> prepare_reply_to(email)
+    |> prepare_attachments(email)
   end
 
   defp prepare_from(body, %Email{from: from}), do: Map.put(body, :from, prepare_recipient(from))
@@ -99,4 +101,39 @@ defmodule Swoosh.Adapters.Mailgun do
 
   defp prepare_html(body, %{html_body: nil}), do: body
   defp prepare_html(body, %{html_body: html_body}), do: Map.put(body, :html, html_body)
+
+  defp prepare_attachments(body, %Email{attachments: nil}), do: body
+  defp prepare_attachments(body, %Email{attachments: []}), do: body
+  defp prepare_attachments(body, %Email{attachments: attachments}), do: Map.put(body, :attachments, attachments)
+
+  defp prepare_body(%{attachments: _} = message),
+    do: {:multipart, prepare_field_parts(message) ++ prepare_attachment_parts(message)}
+  defp prepare_body(message),
+    do: Plug.Conn.Query.encode(message)
+
+  defp prepare_field_parts(message) do
+    message
+    |> Map.delete(:attachments)
+    |> Enum.map(&prepare_field_part/1)
+  end
+
+  defp prepare_field_part({field, content}) when is_atom(field),
+    do: {Atom.to_string(field), content}
+  defp prepare_field_part({field, content}),
+    do: {field, content}
+
+  defp prepare_attachment_parts(%{attachments: attachments}),
+    do: Enum.map(attachments, &prepare_attachment_part/1)
+
+  defp prepare_attachment_part(%{filename: filename, path: path}) do
+    {:file, path, attachment_disposition(filename), []}
+  end
+  defp prepare_attachment_part(%{filename: filename, content: content, content_type: content_type}) do
+    extra_headers = [{"Content-Type", content_type}]
+    {"file", content, attachment_disposition(filename), extra_headers}
+  end
+
+  defp attachment_disposition(filename) do
+    {"form-data", [{"name", "\"attachment\""}, {"filename", "\"#{filename}\""}]}
+  end
 end

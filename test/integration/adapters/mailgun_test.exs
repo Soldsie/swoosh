@@ -26,6 +26,23 @@ defmodule Swoosh.Integration.Adapters.MailgunTest do
     assert {:ok, _response} = Swoosh.Adapters.Mailgun.deliver(email, config)
   end
 
+  test "deliver with attachment", %{config: config} do
+    email =
+      new
+      |> from({"Swoosh Mailgun", "swoosh@#{config[:domain]}"})
+      |> reply_to("swoosh+replyto@#{config[:domain]}")
+      |> to("swoosh+to@elixirhq.com")
+      |> cc("swoosh+cc@elixirhq.com")
+      |> bcc("swoosh+bcc@elixirhq.com")
+      |> subject("Swoosh - Mailgun integration test")
+      |> text_body("This email was sent by the Swoosh library automation testing")
+      |> html_body("<p>This email was sent by the Swoosh library automation testing</p>")
+      |> attachment("lorem.txt", "test/support/fixtures/lorem.txt")
+      |> attachment("lorem-raw.txt", File.read!("test/support/fixtures/lorem.txt"), "text/plain")
+
+    assert {:ok, _response} = Swoosh.Adapters.Mailgun.deliver(email, config)
+  end
+
   test ":error with wrong api key", %{config: config} do
     config = Keyword.put(config, :api_key, "bad_key")
 
