@@ -467,4 +467,21 @@ defmodule Swoosh.Email do
   def assign(%__MODULE__{assigns: assigns} = email, key, value) when is_atom(key) do
     %{email | assigns: Map.put(assigns, key, value)}
   end
+
+  @spec attachment(t, String.t, String.t) :: t
+  def attachment(%__MODULE__{} = email, filename, path)
+  when is_binary(path) and is_binary(filename) do
+    add_attachment(email, %{filename: filename, path: path})
+  end
+
+  @spec attachment(t, String.t, String.t, String.t) :: t
+  def attachment(%__MODULE__{} = email, filename, content, content_type)
+  when is_binary(content) and is_binary(filename) and is_binary(content_type) do
+    add_attachment(email, %{filename: filename, content: content, content_type: content_type})
+  end
+
+  defp add_attachment(%__MODULE__{attachments: nil} = email, attachment),
+    do: %{email | attachments: [attachment]}
+  defp add_attachment(%__MODULE__{attachments: attachments} = email, attachment),
+    do: %{email | attachments: [attachment | attachments]}
 end
